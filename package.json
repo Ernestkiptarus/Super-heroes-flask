@@ -1,0 +1,25 @@
+{
+  "name": "superheroes",
+  "version": "1.0.0",
+  "description": "A web application for managing and displaying superhero data.\",",
+  "main": "app.js",
+  "scripts": {
+    "test": "package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ernestkiptarus/Superheroes.git"
+  },
+  "keywords": [
+    "superheroes\"",
+    "\"management\"",
+    "\"web",
+    "app"
+  ],
+  "author": "ernest kiptarus",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Ernestkiptarus/Superheroes/issues"
+  },
+  "homepage": "https://github.com/Ernestkiptarus/Superheroes#readme"
+}
