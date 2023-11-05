@@ -1,114 +1,240 @@
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.ext.associationproxy import association_proxy
-from sqlalchemy.orm import validates
-from sqlalchemy import MetaData
+#!/usr/bin/env python3
+from flask import Flask
+from flask import Flask, make_response, jsonify, request
+from flask_migrate import Migrate
+from flask_restful import Api, Resource
 
+from models import db, Hero, Power, hero_power
 
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db/app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-metadata = MetaData(naming_convention={
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-})
+migrate = Migrate(app, db)
 
-db = SQLAlchemy(metadata=metadata)
-# db = SQLAlchemy()
+db.init_app(app)
+api = Api(app)
 
-class Hero(db.Model):
-    __tablename__ = 'heroes'
+@app.route('/')
+def home():
+    return '<h1>Welcome home</h1>'
 
-    # serialize_rules = ('-rest_pizza_association.restaurants','pizzas',)
+class Index (Resource):
+    def get(self):
+        response_dict={
+            'Status':'success'
+        }
+        response = make_response(
+            jsonify(response_dict
+                    ),
+                    200,
+            
+        )
+        return response
+api.add_resource(Index,'/')
 
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    super_name = db.Column(db.String)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    updated_at = db.Column(db.DateTime, onupdate=db.func.now())
+#GET(heroes)
+
+class Heroes(Resource):
+    def get(self):
+        heroes = []
+        for hero in Hero.query.all():
+            hero_data = {
+                "id": hero.id,
+                "name": hero.name,
+                "super_name": hero.super_name,
+                "created_at": hero.created_at
+            }
+            heroes.append(hero_data)
+        return make_response(jsonify(heroes), 200)
+api.add_resource(Heroes, '/heroes')
+
+#GET (/heroes/:id)
+
+class HeroesById(Resource):
+    def get(self,id):
+        hero = Hero.query.filter_by(id=id).first()
+        if hero:
+             hero_data = {
+                    "id": hero.id,
+                    "name": hero.name,
+                    "super_name": hero.super_name,
+                    "powers": [
+                        {
+                            "id": power.id,
+                            "name": power.name,
+                            "description": power.description
+                        }
+                        for power in hero.powers
+                    ]
+                }
+             return make_response(jsonify(hero_data), 200)
+        else:
+            response_dict = {
+                "error": "Hero not found"
+            }
+            response = make_response(jsonify(response_dict), 404)
+            return response
+          
+api.add_resource(HeroesById, '/heroes:<int:id>')
+
+#GET(/Powers)
+
+class Powers(Resource):
+    def get(self):
+        powers = []
+        for power in Power.query.all():
+            power_data={
+                "id": power.id,
+                "name": power.name,
+                "description": power.description,
+                "created_at":power.created_at,
+                "hero_ps": [
+                    {
+                        "strength": hero_p.strength,
+                        "hero_id": hero_p.hero_id
+                    }
+                    for hero_p in power.hero_ps
+                ]
+
+            }
+            powers.append(power_data)
+        return make_response(jsonify(powers),200)
     
+api.add_resource(Powers, '/powers') 
 
-    # relationship
-    hero_power_association = db.relationship('HeroPower', back_populates='hero',cascade='all, delete-orphan')
-    powers = association_proxy('hero_power_association','power')
-
-
-
-
-    # ---------------------------------------validations
-    # @validates('super_name')
-    # def name_validation(self, key, super_name):
-    #     if super_name in [h.super_name for h in Hero.query.all()]:
-    #         raise ValueError('super_name already exists in the database')
-    #     return super_name
+ # GET (/powers/:id)
+  
+class PowersById(Resource):
+    def get(self, id):
+        powers = []
+        power = Power.query.filter_by(id=id).first()
+        if power:
+            power_data = {
+                "id": power.id,
+                "name": power.name,
+                "description": power.description,
+                "created_at": power.created_at,
+                "hero_ps": [
+                    {
+                        "strength": hero_p.strength,
+                        "hero_id": hero_p.hero_id
+                    }
+                    for hero_p in power.hero_ps
+                ]
+            }
+            powers.append(power_data)
+            return make_response(jsonify(powers), 200)
+        else:
+               response_dict={
+                "error": "Power not found"
+               }
+               response = make_response(
+                jsonify(response_dict), 404
+               )
+               return response
+           
     
+  # PATCH /powers/:id
+    def patch(self, id):
+        power = Power.query.filter_by(id=id).first()
+         
 
+        if power:
+            description = request.form.get('description')
 
-    def __repr__(self):
-        return f'(id: {self.id}, name: {self.name}. super_name: {self.super_name} )'
+            if not description or len(description) < 20:
+                response_dict = {
+                   "errors": ["validation errors"]
+                }
+                response = make_response(jsonify(response_dict), 400)
+                return response
+            for attr in request.form:
+                setattr(power, attr, request.form.get(attr))
+            db.session.add(power)
+            db.session.commit()
+   
+            power_data = {
+                "id": power.id,
+                "name": power.name,
+                "description": power.description,
+                "created_at": power.created_at
+            
+            }
 
+            response = make_response(jsonify(power_data), 200)
+            return response
+        elif not power:
+            response_dict = {
+                "error": "Power not found"
+            }
+            response = make_response(jsonify(response_dict), 404)
+            return response
+        
+       
+api.add_resource(PowersById, '/powers/<int:id>')
 
-class HeroPower(db.Model):
-    __tablename__='heropowers'
+# POST (/hero_powers)
 
-    
-    id = db.Column(db.Integer, primary_key=True)
-    strength = db.Column(db.String)  
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    updated_at = db.Column(db.DateTime, onupdate=db.func.now())
-    
-    hero_id = db.Column('hero_id',db.Integer, db.ForeignKey("heroes.id"))
-    power_id = db.Column('power_id',db.Integer, db.ForeignKey("powers.id"))
+class Hero_powers(Resource):
+    def post(self):
+        valid_strengths = ["Strong", "Weak", "Average"]
+        
+        data = request.get_json()
+        strength = data.get('strength')
+        power_id = data.get('power_id')
+        hero_id = data.get('hero_id')
+        
+        if strength not in valid_strengths:
+            response_dict = {
+                "errors": ["validation errors"]
+            }
+            return make_response(jsonify(response_dict), 400)
+        
+        if strength and power_id and hero_id:
+            hero = Hero.query.get(hero_id)
+            power = Power.query.get(power_id)
 
-    hero = db.relationship('Hero', back_populates='hero_power_association')
-    power = db.relationship('Power', back_populates='hero_power_association')
+            if hero and power:
+                hero_power_entry = hero_power.insert().values(
+                    strength=strength,
+                    power_id=power_id,
+                    hero_id=hero_id
+                )
 
+                db.session.execute(hero_power_entry)
+                db.session.commit()
 
- 
+                hero_data = {
+                    "id": hero.id,
+                    "name": hero.name,
+                    "super_name": hero.super_name,
+                    "powers": [
+                        {
+                            "id": power.id,
+                            "name": power.name,
+                            "description": power.description
+                        }
+                        for power in hero.powers
+                    ]
+                }
+                response = make_response(jsonify(hero_data), 201)
+                return response
+            else:
+                response_dict = {
+                    "error": "Invalid hero_id or power_id"
+                }
+                response = make_response(jsonify(response_dict), 404)
+                return response
+        else:
+            response_dict = {
+                "error": "Missing required fields"
+            }
+            response = make_response(jsonify(response_dict), 400)
+            return response
+              
+api.add_resource(Hero_powers, '/hero_powers')
 
-    # # ------------------------------------------validations
-    @validates('strength')
-    def price_validation(self, key, strength):
-        if strength not  in ['Average','Weak','Strong']:
-            raise ValueError(' strength must be one of the following : Strong, Weak or Average')
-        return strength
-    
-    
-    
-    
-
-
-    
-
-    def __repr__(self):
-        return f'(id: {self.id}, strength: {self.strength}, hero_id:{self.hero_id}, power_id:{self.power_id})'
-
-
-
-class Power(db.Model):
-    __tablename__ = 'powers'
-
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    description = db.Column(db.String)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    updated_at = db.Column(db.DateTime, onupdate=db.func.now())
-
-    # # relationship
-    hero_power_association = db.relationship('HeroPower', back_populates='power')
-    heroes = association_proxy('hero_power_association','hero')
-
-
-    
-
-  # ------------------------------------------validations
-    @validates('description')
-    def price_validation(self, key, description):
-        if len(description) < 20:
-            raise ValueError('description  must be present and at least 20 characters long')
-        return description
-    
-    
- 
-
-    def __repr__(self):
-        return f'(id: {self.id}, name: {self.name}, description: {self.description}, created_at: {self.created_at})'
-
-
+          
+if __name__ == '__main__':
+    app.run(port=5555)
